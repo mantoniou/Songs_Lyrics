@@ -1,0 +1,193 @@
+---
+title: Analyzing lyrics from songs ????
+author: ''
+date: '2018-05-26'
+description: "[May 26, 2018] Text analysis on song lyrics, using #tidytext ????????"
+slug: text-analytics-on-song-lyrics-using-tidytext
+categories:
+  - R
+tags:
+  - Text analytics
+  - NLP
+  - Tidytext
+---
+
+In this post i will analyze the articles published by [NEWSBEAST](http://www.newsbeast.gr), 
+one of the main on-line publishers in Greece. 
+The main question is **"Are there any trends on the daily posting frequency of NEWSBEAST?"**
+The steps below were followed before the main data analysis (link for the full r code can be 
+found at the end of the article):  
+
+* Scraping the articles from the site (www.newbeast.gr) using rvest & car libraries in R  
+* Data preparation (including data cleansing, transformation)  
+* Exploratory analysis 
+
+
+# Insert data
+
+```{r}
+library(readr)
+library(tidyverse)
+library(stringr)
+
+
+songs <- read_csv("./data/songs.csv")
+
+
+songs %>% 
+  group_by(artist) %>% 
+  count() %>% 
+  filter(n > 20) %>% 
+  arrange(-n) %>% View()
+
+# songs$characters <- str_count(songs$lyrics)
+
+```
+
+
+# Data cleansing 
+
+
+
+
+
+# Are there any differences between different music genres
+
+## _How many songs per genre
+
+```{r}
+songs %>% 
+  group_by(genre) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  ggplot() +
+  geom_col(aes(reorder(genre, -n), n))
+
+```
+
+* could choose specific genres for comparison. e.g. Rock, pop, hip-hop, metal, country, jazz, electronic. 
+
+## _What kind of music uses more words
+
+```{r}
+## number of characters per song
+songs %>% 
+  ggplot() +
+  geom_boxplot(aes(genre, characters))
+
+```
+* Hip-Hop seems to be the significantly different music genre. 
+
+## _Genres -> Artists
+
+```{r}
+songs %>% 
+  group_by(genre, artist) %>% 
+  count() %>% 
+  arrange(genre, -n)
+```
+
+
+# Modelling on genres
+
+## _Create the model
+
+```{r}
+  library(topicmodels)
+  library(tm)
+  library(stopwords)
+  library(quanteda)
+
+
+  # Get english and greek stopwords
+  stopwords <- c(stopwords())
+  
+  
+  # Clean text
+  songs$lyrics <- tolower(songs$lyrics)
+  songs$lyrics <- removePunctuation(songs$lyrics)
+  songs$lyrics <- removeNumbers(songs$lyrics)
+  songs$lyrics <- stripWhitespace(songs$lyrics)
+  songs$lyrics <- removeWords(songs$lyrics, stopwords)
+  
+
+  songs <- songs %>% 
+    filter(str_length(lyrics) > 10)
+  
+  songs$characters <- str_count(songs$lyrics)
+
+  
+  # _Build Model ###############################################################
+  
+  # Calculate 
+  songs_corpus <- corpus(songs, text_field = "lyrics")
+  songs_dfm <- dfm(songs_corpus, tolower = TRUE)
+
+
+  # songs_lda <- LDA(songs_dfm, k = 4, control = list(seed = 1234))
+  load(file = "/Users/manos/OneDrive/Projects/R/Blog/data/songs.RDA")
+  
+ 
+```
+
+
+
+## _Print 
+
+```{r}
+chapters_gamma <- 
+  tidy(songs_lda, matrix = "gamma") %>% 
+  arrange(document, topic) %>% View()
+
+```
+
+
+
+
+```{r}
+ # _Calculate Tables ##########################################################
+  library(tidytext)
+  
+  ap_topics <- tidy(songs_lda, matrix = "beta")
+  
+  top_terms <- 
+    ap_topics %>%
+    group_by(topic) %>%
+    top_n(10, beta) %>%
+    ungroup() %>%
+    arrange(topic, -beta) %>% 
+    rename(prob = beta)
+  
+  
+  
+  
+  ap_documents <- 
+    tidy(all_lda, matrix = "gamma") %>%
+    spread(key = topic, value = gamma) %>% 
+    mutate(document = parse_number(document)) %>% 
+    arrange(document)
+  
+  names <- names(ap_documents[, -1])
+    
+  posts <- 
+    cbind(all_new, ap_documents) %>% 
+    select(post_id, message, created_time, brand, names)
+  
+  posts_OneTopic <- 
+  posts %>% 
+    gather(names, key = "topic", value = "prob" ) %>% 
+    group_by(post_id, message, created_time, brand) %>%
+    filter(prob == max(prob)) %>% 
+    ungroup() %>% 
+    select(post_id, topic, prob)
+    
+  posts <- left_join(posts, posts_OneTopic)
+  
+    
+  brands <-
+  posts %>%
+    select(brand, names) %>%
+    group_by(brand) %>%
+
+```
+
