@@ -22,36 +22,51 @@ found at the end of the article):
 * Data preparation (including data cleansing, transformation)  
 * Exploratory analysis 
 
-
-# Insert data
+# Libraries
 
 ```{r}
 library(readr)
 library(tidyverse)
 library(stringr)
+library(tidytext)
+library(lubridate)
+library(wordcloud)
+```
 
+
+# Insert data
+
+```{r}
 
 songs <- read_csv("./data/songs.csv")
 
 
-songs %>% 
-  group_by(artist) %>% 
-  count() %>% 
-  filter(n > 20) %>% 
-  arrange(-n) %>% View()
-
-# songs$characters <- str_count(songs$lyrics)
 
 ```
 
 
-# Data cleansing 
+# DATA CLEANSING
 
 
 
 
+
+# EXPLORATORY ANALYSIS
 
 # Are there any differences between different music genres
+
+
+## _How many songs per artist
+
+```{r}
+songs %>% 
+  group_by(artist) %>% 
+  count() %>% 
+  filter(n > 20) %>% 
+  arrange(-n)
+
+```
+* Not really informative. maybe 
 
 ## _How many songs per genre
 
@@ -78,14 +93,150 @@ songs %>%
 ```
 * Hip-Hop seems to be the significantly different music genre. 
 
-## _Genres -> Artists
+## _How many songs per genres & Artists
 
 ```{r}
+
 songs %>% 
   group_by(genre, artist) %>% 
   count() %>% 
   arrange(genre, -n)
+
 ```
+* Not informative
+
+## _How many songs per genres & Artists
+
+```{r}
+
+songs %>% 
+  group_by(artist, genre) %>% 
+  count() %>% 
+  arrange(artist, genre, -n) %>% 
+  group_by(artist) %>% 
+  summarise(N = n(), total_songs = sum(n)) %>% 
+  arrange(-N) %>% View()
+
+```
+** Possible problem as every artist belongs to just one genres. But it is known 
+that a lot of artists do change their music genre through their career.
+
+## _How many songs per Year
+
+```{r}
+
+songs %>% 
+  group_by(year) %>% 
+  count() 
+
+```
+*** There are a few songs with wrong year ... 
+++
+
+## _How many songs per Decade and Genre
+
+```{r}
+
+# songs %>% 
+#   group_by(year, genre) %>% 
+#   count() %>% 
+#   spread(key = genre, value = n)
+# 
+# songs %>% 
+#   group_by(year, genre) %>% 
+#   summarise(N = n()) %>% 
+#   mutate(freq = round(N/sum(N), 2)) %>% View()
+
+songs %>% 
+  mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(10))) %>% 
+  group_by(decade, genre) %>% 
+  summarise(N = n()) %>% 
+  mutate(freq = round(N/sum(N), 2)) %>% 
+  select(-N) %>% 
+  spread(key = decade, value = freq) %>%  View()
+
+
+```
+** I think it would be wrong to say things about music genres. Rock is Falling - Hip hop is raising
+** could make a statistical test for counts, chi-square to show differences
+
+## _How many characters per Decade & Decade+Genre
+
+```{r}
+
+songs %>% 
+  mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(10))) %>% 
+  group_by(decade) %>% 
+  summarise(characters = mean(characters)) %>% 
+  # mutate(freq = round(N/sum(N), 2)) %>% 
+  # select(-N) %>% 
+  spread(key = decade, value = characters) %>%  View()
+
+
+songs %>% 
+  mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(10))) %>% 
+  group_by(decade, genre) %>% 
+  summarise(characters = mean(characters)) %>% 
+  # mutate(freq = round(N/sum(N), 2)) %>% 
+  # select(-N) %>% 
+  spread(key = decade, value = characters) %>%  View()
+
+
+```
+*** It seems that songs contain more lyrics now. ???? 
+
+
+## _Wordcloud per decade
+
+```{r}
+words <- 
+  songs %>%
+  unnest_tokens(word, lyrics) %>% 
+  group_by(word) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  head(100)
+
+wordcloud(words = words$word, freq = words$n, max.words = 100)
+```
+
+
+
+## _Wordcloud per genre  - chech older ... comparing
+
+```{r}
+words <- 
+  songs %>%
+  unnest_tokens(word, lyrics) %>% 
+  group_by(genre, word) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  group_by(genre) %>% 
+  top_n(n = 100, wt = n)
+
+genres <- unique(words$genre)
+
+for(i in 1:length(genres)){
+  temp <- filter(words, genre == genres[i])
+  
+  # Create a word cloud
+  par(bg="grey30")
+  #png(file="/home/manos4/Analysis/002_Content/output/figs/WordCloud_all_posts.png",width=1000,height=700, bg="grey30")
+  wordcloud(words = temp$word, freq = temp$n, col=terrain.colors(length(temp$word), alpha=0.9), random.order=FALSE, rot.per=0.3 )
+  title(main =  genres[i] , font.main = 1, col.main = "cornsilk3", cex.main = 1.2)
+  #dev.off()
+}
+  
+```
+
+
+
+## _How much they repeat themselves - Rechedule code from ....
+
+
 
 
 # Modelling on genres
