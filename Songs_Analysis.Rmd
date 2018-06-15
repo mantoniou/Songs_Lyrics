@@ -31,6 +31,10 @@ library(stringr)
 library(tidytext)
 library(lubridate)
 library(wordcloud)
+library(topicmodels)
+library(tm)
+library(stopwords)
+library(quanteda)
 ```
 
 
@@ -40,21 +44,63 @@ library(wordcloud)
 
 songs <- read_csv("./data/songs.csv")
 
-
-
 ```
 
 
 # DATA CLEANSING
 
 
+## Filter data, handle missing values
 
+```{r}
+
+# Keep songs with 10 or more characters in the lyrics
+songs <- 
+  songs %>% 
+  filter(str_length(lyrics) > 10)
+  
+# Detect the language of the song
+library(cld3)
+songs$lang <- detect_language(songs$lyrics)
+
+# Filter the songs that 
+songs <- 
+  songs %>%
+  filter(lang == "en" & is.na(genre) == FALSE & year >= 1970)
+  
+songs$characters <- str_count(songs$lyrics)
+
+```
+
+
+
+## _text cleaning
+
+```{r}
+
+
+# Create a vector with stopwords
+stopwords <- c(stopwords())
+  
+  
+# Clean text
+songs$lyrics <- tolower(songs$lyrics)
+songs$lyrics <- removePunctuation(songs$lyrics)
+songs$lyrics <- removeNumbers(songs$lyrics)
+songs$lyrics <- stripWhitespace(songs$lyrics)
+songs$lyrics <- removeWords(songs$lyrics, stopwords)
+songs$lyrics <- stemDocument(songs$lyrics)
+
+
+# saveRDS(songs, file = "data/cleaned_data.RDS")
+
+songs <- readRDS(file = "data/cleaned_data.RDS")
+```
 
 
 # EXPLORATORY ANALYSIS
 
 # Are there any differences between different music genres
-
 
 ## _How many songs per artist
 
@@ -85,6 +131,9 @@ songs %>%
 ## _What kind of music uses more words
 
 ```{r}
+
+songs$characters <- str_count(songs$lyrics)
+
 ## number of characters per song
 songs %>% 
   ggplot() +
@@ -115,7 +164,7 @@ songs %>%
   arrange(artist, genre, -n) %>% 
   group_by(artist) %>% 
   summarise(N = n(), total_songs = sum(n)) %>% 
-  arrange(-N) %>% View()
+  arrange(-N)
 
 ```
 ** Possible problem as every artist belongs to just one genres. But it is known 
@@ -137,16 +186,6 @@ songs %>%
 
 ```{r}
 
-# songs %>% 
-#   group_by(year, genre) %>% 
-#   count() %>% 
-#   spread(key = genre, value = n)
-# 
-# songs %>% 
-#   group_by(year, genre) %>% 
-#   summarise(N = n()) %>% 
-#   mutate(freq = round(N/sum(N), 2)) %>% View()
-
 songs %>% 
   mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
   mutate(decade = floor_date(date, years(10))) %>% 
@@ -154,7 +193,23 @@ songs %>%
   summarise(N = n()) %>% 
   mutate(freq = round(N/sum(N), 2)) %>% 
   select(-N) %>% 
-  spread(key = decade, value = freq) %>%  View()
+  spread(key = decade, value = freq) 
+
+songs %>% 
+  mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(5))) %>% 
+  group_by(decade, genre) %>% 
+  summarise(N = n()) %>% 
+  mutate(freq = round(N/sum(N), 2)) %>% 
+  filter(genre %in% c("Country", "Hip-Hop", "Metal", "Pop", "Rock")) %>% 
+  ggplot(aes(decade, freq, colour = genre)) +
+  # geom_line() +
+  geom_smooth(se = FALSE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  ggtitle("Smoothed frequency of total songs per Music Genre (top 5)")
+  
+  
+  
 
 
 ```
@@ -169,27 +224,57 @@ songs %>%
   mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
   mutate(decade = floor_date(date, years(10))) %>% 
   group_by(decade) %>% 
-  summarise(characters = mean(characters)) %>% 
+  summarise(characters = mean(characters, na.rm = TRUE)) %>% 
   # mutate(freq = round(N/sum(N), 2)) %>% 
   # select(-N) %>% 
-  spread(key = decade, value = characters) %>%  View()
+  spread(key = decade, value = characters)
 
 
 songs %>% 
   mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
   mutate(decade = floor_date(date, years(10))) %>% 
   group_by(decade, genre) %>% 
-  summarise(characters = mean(characters)) %>% 
+  summarise(characters = round(mean(characters, na.rm = TRUE), 0)) %>% 
   # mutate(freq = round(N/sum(N), 2)) %>% 
   # select(-N) %>% 
-  spread(key = decade, value = characters) %>%  View()
+  spread(key = decade, value = characters) 
 
+
+
+
+songs %>% 
+  mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(10))) %>% 
+  group_by(decade, genre) %>% 
+  summarise(characters = round(mean(characters, na.rm = TRUE), 0)) %>% 
+ ggplot(aes(decade, characters, colour = genre)) +
+  geom_line() +
+  # geom_smooth(se = FALSE) +
+  ggtitle("How much lyrics per song for Music Genre")
+  
+songs %>% 
+  mutate(date = as_date(paste(as.character(songs$year), "-01", "-01"))) %>% 
+  mutate(decade = floor_date(date, years(10))) %>% 
+  group_by(decade) %>% 
+  summarise(characters = round(mean(characters, na.rm = TRUE), 0)) %>% 
+ ggplot(aes(decade, characters)) +
+  geom_line() +
+  # geom_smooth(se = FALSE) +
+  ggtitle("How much lyrics per song per 5 year interval")
+
+
+songs %>% 
+  group_by(genre) %>% 
+  summarise(characters = round(mean(characters, na.rm = TRUE), 0)) %>% 
+ggplot(aes(reorder(genre, -characters), characters)) +
+  geom_col() +
+  ggtitle("Average lyrics characters per song for each music genre")
 
 ```
 *** It seems that songs contain more lyrics now. ???? 
 
 
-## _Wordcloud per decade
+## _Wordcloud 
 
 ```{r}
 words <- 
@@ -244,62 +329,69 @@ for(i in 1:length(genres)){
 ## _Create the model
 
 ```{r}
-  library(topicmodels)
-  library(tm)
-  library(stopwords)
-  library(quanteda)
+# _Build Model ###############################################################
+  
+# # Calculate 
+# songs_corpus <- corpus(songs, text_field = "lyrics")
+# songs_dfm <- dfm(songs_corpus, tolower = TRUE)
+# 
+# # songs_lda <- LDA(songs_dfm, k = 4, control = list(seed = 1234))
+# load(file = "/Users/manos/OneDrive/Projects/R/Blog/data/songs.RDA")
+#   
 
 
-  # Get english and greek stopwords
-  stopwords <- c(stopwords())
-  
-  
-  # Clean text
-  songs$lyrics <- tolower(songs$lyrics)
-  songs$lyrics <- removePunctuation(songs$lyrics)
-  songs$lyrics <- removeNumbers(songs$lyrics)
-  songs$lyrics <- stripWhitespace(songs$lyrics)
-  songs$lyrics <- removeWords(songs$lyrics, stopwords)
-  
-
-  songs <- songs %>% 
-    filter(str_length(lyrics) > 10)
-  
-  songs$characters <- str_count(songs$lyrics)
-
-  
-  # _Build Model ###############################################################
-  
-  # Calculate 
-  songs_corpus <- corpus(songs, text_field = "lyrics")
-  songs_dfm <- dfm(songs_corpus, tolower = TRUE)
 
 
-  # songs_lda <- LDA(songs_dfm, k = 4, control = list(seed = 1234))
-  load(file = "/Users/manos/OneDrive/Projects/R/Blog/data/songs.RDA")
-  
- 
+
+
+# split into words
+by_word <- 
+  songs %>% 
+  unnest_tokens(word, lyrics)
+
+# find document-word counts
+word_counts <- 
+  by_word %>%
+  count(song, word, sort = TRUE) %>%
+  ungroup()
+
+word_counts
+
+
+songs_dtm <- word_counts %>%
+  cast_dtm(song, word, n)
+
+songs_dtm
+
+
+songs_lda <- LDA(songs_dtm, k = 4, control = list(seed = 1234))
+songs_lda
+
+# save(songs_lda, file = "objects/songs_lda_4.RDA")
+
+load(file = "objects/songs_lda_4.RDA")
+
 ```
+* Create another model with 2 groups to check hip-hop & metal Vs the rest
 
 
-
-## _Print 
+## _Print probabilities for each song to belong to each topic
 
 ```{r}
-chapters_gamma <- 
+songs_gamma <- 
   tidy(songs_lda, matrix = "gamma") %>% 
-  arrange(document, topic) %>% View()
+  arrange(document, topic)
 
 ```
 
 
-
+## _Top terms per Topic
 
 ```{r}
  # _Calculate Tables ##########################################################
   library(tidytext)
   
-  ap_topics <- tidy(songs_lda, matrix = "beta")
+  ap_topics <- tidy(songs_lda, matrix = "gamma")
   
   top_terms <- 
     ap_topics %>%
@@ -310,35 +402,49 @@ chapters_gamma <-
     rename(prob = beta)
   
   
+ 
+```
+
+
+## _Are topics and genres related?
+
+```{r}
+# _Calculate Tables ##########################################################
+library(tidytext)
+  
+ap_topics <- tidy(songs_lda, matrix = "gamma")
+
+  
+test <- right_join(ap_topics, songs[, c("song", "genre")], by = c("document" = "song"))
+ 
+
+# reorder titles in order of topic 1, topic 2, etc before plotting
+test %>%
+  mutate(genre = reorder(genre, gamma * topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot() +
+  facet_wrap(~ genre)
+
+
+```
+
+
+
+
+?????????????
+
+```{r}
   
   
   ap_documents <- 
-    tidy(all_lda, matrix = "gamma") %>%
+    tidy(songs_lda, matrix = "gamma") %>%
     spread(key = topic, value = gamma) %>% 
     mutate(document = parse_number(document)) %>% 
     arrange(document)
   
   names <- names(ap_documents[, -1])
     
-  posts <- 
-    cbind(all_new, ap_documents) %>% 
-    select(post_id, message, created_time, brand, names)
-  
-  posts_OneTopic <- 
-  posts %>% 
-    gather(names, key = "topic", value = "prob" ) %>% 
-    group_by(post_id, message, created_time, brand) %>%
-    filter(prob == max(prob)) %>% 
-    ungroup() %>% 
-    select(post_id, topic, prob)
     
-  posts <- left_join(posts, posts_OneTopic)
-  
-    
-  brands <-
-  posts %>%
-    select(brand, names) %>%
-    group_by(brand) %>%
 
 ```
 
