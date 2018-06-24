@@ -1,26 +1,8 @@
 ---
-title: Analyzing lyrics from songs ????
-author: ''
-date: '2018-05-26'
-description: "[May 26, 2018] Text analysis on song lyrics, using #tidytext ????????"
-slug: text-analytics-on-song-lyrics-using-tidytext
-categories:
-  - R
-tags:
-  - Text analytics
-  - NLP
-  - Tidytext
+title: "Initial analysis on song lyrics, using #tidytex"
+output: html_notebook
 ---
 
-In this post i will analyze the articles published by [NEWSBEAST](http://www.newsbeast.gr), 
-one of the main on-line publishers in Greece. 
-The main question is **"Are there any trends on the daily posting frequency of NEWSBEAST?"**
-The steps below were followed before the main data analysis (link for the full r code can be 
-found at the end of the article):  
-
-* Scraping the articles from the site (www.newbeast.gr) using rvest & car libraries in R  
-* Data preparation (including data cleansing, transformation)  
-* Exploratory analysis 
 
 # Libraries
 
@@ -63,10 +45,15 @@ songs <-
 library(cld3)
 songs$lang <- detect_language(songs$lyrics)
 
-# Filter the songs that 
+# Filter the songs that are certainly english, the genre is not missing or 
+# not available and the year is 1970 or later
+
 songs <- 
   songs %>%
-  filter(lang == "en" & is.na(genre) == FALSE & year >= 1970)
+  filter(lang == "en" & 
+           is.na(genre) == FALSE &
+           year >= 1970 &
+           genre != "Not Available")
   
 songs$characters <- str_count(songs$lyrics)
 
@@ -83,7 +70,7 @@ songs$characters <- str_count(songs$lyrics)
 stopwords <- c(stopwords())
   
   
-# Clean text
+# Perform cleansing & stemming in lsong lyrics text
 songs$lyrics <- tolower(songs$lyrics)
 songs$lyrics <- removePunctuation(songs$lyrics)
 songs$lyrics <- removeNumbers(songs$lyrics)
@@ -92,9 +79,8 @@ songs$lyrics <- removeWords(songs$lyrics, stopwords)
 songs$lyrics <- stemDocument(songs$lyrics)
 
 
-# saveRDS(songs, file = "data/cleaned_data.RDS")
+saveRDS(songs, file = "data/cleaned_data.RDS")
 
-songs <- readRDS(file = "data/cleaned_data.RDS")
 ```
 
 
@@ -105,6 +91,9 @@ songs <- readRDS(file = "data/cleaned_data.RDS")
 ## _How many songs per artist
 
 ```{r}
+songs <- readRDS(file = "data/cleaned_data.RDS")
+
+
 songs %>% 
   group_by(artist) %>% 
   count() %>% 
@@ -131,8 +120,6 @@ songs %>%
 ## _What kind of music uses more words
 
 ```{r}
-
-songs$characters <- str_count(songs$lyrics)
 
 ## number of characters per song
 songs %>% 
@@ -352,16 +339,12 @@ songs_dtm <- word_counts %>%
 songs_dtm
 
 
-songs_lda <- LDA(songs_dtm, k = 4, control = list(seed = 1234))
-songs_lda_3 <- LDA(songs_dtm, k = 3, control = list(seed = 1234))
-songs_lda_2 <- LDA(songs_dtm, k = 2, control = list(seed = 1234))
+#songs_lda <- LDA(songs_dtm, k = 4, control = list(seed = 1234))
+songs_lda <- LDA(songs_dtm, k = 3, control = list(seed = 1234))
+#songs_lda_2 <- LDA(songs_dtm, k = 2, control = list(seed = 1234))
 
 
-# save(songs_lda, file = "objects/songs_lda_2.RDA")
-
-# load(file = "objects/songs_lda_4.RDA")
-load(file = "objects/songs_lda_3.RDA")
-# load(file = "objects/songs_lda_2.RDA")
+save(songs_lda, file = "objects/songs_lda_3.RDA")
 
 ```
 * Create another model with 2 groups to check hip-hop & metal Vs the rest
@@ -370,6 +353,9 @@ load(file = "objects/songs_lda_3.RDA")
 ## _Print probabilities for each song to belong to each topic
 
 ```{r}
+load(file = "objects/songs_lda_3.RDA")
+
+
 songs_gamma <- 
   tidy(songs_lda, matrix = "gamma") %>% 
   arrange(document, topic)
@@ -393,13 +379,7 @@ songs_gamma <-
     arrange(topic, -gamma) %>% 
     rename(prob = gamma)
   
-  top_terms %>%
-  mutate(term = reorder(term, beta)) %>%
-  ggplot(aes(term, beta, fill = factor(topic))) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ topic, scales = "free") +
-  coord_flip()
- 
+  top_terms
 ```
 
 
@@ -428,9 +408,5 @@ test %>%
 *** The 2nd topic is dominated by Hip-Hop.
 *** The 3rd topic is dominated by Metal genre. although there is a significant contribution 
 of Folk music
-
-
-
-# COSINE SIMILARITY
 
 
